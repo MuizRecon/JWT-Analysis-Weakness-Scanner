@@ -1,8 +1,20 @@
 # J.A.W.S — JWT Analysis & Weakness Scanner
 
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+
 A lightweight, dependency-free command-line tool for analyzing JSON Web Tokens and surfacing common security weaknesses. Built for API security testing, bug bounty recon, and JWT assessments.
 
-I built J.A.W.S because I kept manually decoding JWTs and checking the same handful of things during pentests and bug bounty work, algorithm misconfigurations, weak signing secrets, missing claims, so I turned that repetitive checklist into a tool. It's written entirely in Python's standard library, so there's nothing to install beyond Python itself.
+I built J.A.W.S because I kept manually decoding JWTs and checking the same handful of things during pentests and bug bounty work, algorithm misconfigurations, weak signing secrets, missing claims — so I turned that repetitive checklist into a tool. It's written entirely in Python's standard library, so there's nothing to install beyond Python itself.
+
+## Quick start
+
+```bash
+git clone https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner.git
+cd JWT-Analysis-Weakness-Scanner
+python3 jaws.py <YOUR_JWT_TOKEN>
+```
 
 ## What it does
 
@@ -36,8 +48,8 @@ For HS256, HS384, and HS512 tokens, J.A.W.S can attempt to recover the signing s
 ## Installation
 
 ```bash
-git clone https://github.com/MuizRecon/jaws-jwt-scanner.git
-cd jaws-jwt-scanner
+git clone https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner.git
+cd JWT-Analysis-Weakness-Scanner
 ```
 
 No dependencies, no virtual environment required — just Python 3.10 or newer.
@@ -127,7 +139,7 @@ CRITICAL: 1
 ## Project structure
 
 ```
-jaws-jwt-scanner/
+JWT-Analysis-Weakness-Scanner/
 ├── jaws.py              # Main scanner
 ├── README.md            # Documentation
 ├── LICENSE              # MIT License
@@ -154,7 +166,7 @@ This is a recon and analysis tool. It intentionally does **not**:
 - Bypass authentication on its own
 - Replace a thorough manual pentest
 
-Treat its output as a starting point for investigation, not a final verdict — always verify findings manually against the actual target.
+Treat its output as a starting point for investigation, not a final verdict, always verify findings manually against the actual target.
 
 ## Legal
 
