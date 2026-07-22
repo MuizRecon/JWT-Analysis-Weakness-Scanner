@@ -1,0 +1,2 @@
+# J.A.W.S. uses only Python standard library
+# No external dependencies required

@@ -1,0 +1,35 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files (generated during testing)
+big.txt
+huge.txt
+unicode.txt
+clean.txt
+mylist.txt
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
