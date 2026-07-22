@@ -1,314 +1,182 @@
-# 🦈 J.A.W.S — JWT Analysis & Weakness Scanner
+# J.A.W.S — JWT Analysis & Weakness Scanner
 
-[![](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![](https://img.shields.io/badge/dependencies-none-brightgreen)]()
+A lightweight, dependency-free command-line tool for analyzing JSON Web Tokens and surfacing common security weaknesses. Built for API security testing, bug bounty recon, and JWT assessments.
 
-**J.A.W.S (JWT Analysis & Weakness Scanner)** is a lightweight command-line security tool designed for **API security testing, bug bounty reconnaissance, and JWT security assessments**.
+I built J.A.W.S because I kept manually decoding JWTs and checking the same handful of things during pentests and bug bounty work, algorithm misconfigurations, weak signing secrets, missing claims, so I turned that repetitive checklist into a tool. It's written entirely in Python's standard library, so there's nothing to install beyond Python itself.
 
-It analyzes JSON Web Tokens (JWTs), identifies common security weaknesses, and optionally tests HMAC signing secrets against a wordlist.
+## What it does
 
-Built with Python's standard library only — **no external dependencies required**.
+Point J.A.W.S at a JWT and it will:
 
----
+- Decode the header and payload for quick inspection
+- Flag algorithm-related issues, including `alg=none` and algorithm confusion risks
+- Check the JOSE header for suspicious or risky fields
+- Flag missing or weak security claims (expiration, audience, issuer, etc.)
+- Optionally attempt to crack HMAC-signed tokens against a wordlist
 
-## ✨ Features
+It's a recon and analysis tool, not an exploitation framework, it tells you where the weaknesses likely are so you can verify and act on them manually.
 
-### 🔍 JWT Security Analysis
+## JOSE header checks
 
-J.A.W.S performs automated checks for common JWT security issues:
+| Header | What it's checking for |
+|--------|------------------------|
+| `alg`  | Insecure algorithm configurations |
+| `typ`  | JWT type consistency |
+| `kid`  | Key lookup attack surface |
+| `jku`  | External key references |
+| `x5u`  | Certificate URL references |
+| `jwk`  | Embedded public keys |
+| `crit` | Critical extension usage |
+| `cty`  | Nested JWT indicators |
 
-- Algorithm misconfiguration (`alg=none`)
-- Algorithm confusion risks (RS256 → HS256)
-- Missing or invalid security claims (`exp`, `iat`, `nbf`, `iss`, `aud`, `sub`, `jti`)
-- Weak token lifetime settings
-- Suspicious JOSE headers
-- Potential key management issues
+## HMAC secret testing
 
-### 🔐 JOSE Header Analysis
+For HS256, HS384, and HS512 tokens, J.A.W.S can attempt to recover the signing secret using either a built-in list of common weak secrets or a custom wordlist. It streams the wordlist rather than loading it all into memory, has timeout protection, and uses constant-time comparison when checking signatures.
 
-The scanner checks for:
-
-| Header | Purpose |
-| ------ | ------- |
-| `alg`  | Detect insecure algorithm configurations |
-| `typ`  | Check JWT type consistency (RFC 8725) |
-| `kid`  | Identify potential key lookup risks (path traversal, SQLi) |
-| `jku`  | Detect external key references (SSRF risks) |
-| `x5u`  | Detect certificate URL references |
-| `jwk`  | Detect embedded public keys |
-| `crit` | Identify critical extension usage |
-| `cty`  | Detect nested JWT indicators |
-
-### 🔓 HMAC Secret Testing
-
-For HMAC-signed JWTs, J.A.W.S can test whether weak signing secrets are being used.
-
-**Supported algorithms:**
-- HS256
-- HS384
-- HS512
-
-**Features:**
-- Custom wordlist support
-- Built-in common secret list
-- Streaming wordlist processing (memory-safe for `rockyou.txt`)
-- Timeout protection (`--timeout`)
-- Constant-time signature comparison (prevents timing attacks)
-
----
-
-## 🚀 Installation
-
-Clone the repository:
+## Installation
 
 ```bash
-git clone https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner.git
-Navigate into the project:
+git clone https://github.com/MuizRecon/jaws-jwt-scanner.git
+cd jaws-jwt-scanner
+```
 
-bash
-cd JWT-Analysis-Weakness-Scanner
-No installation required. J.A.W.S uses only Python standard libraries.
+No dependencies, no virtual environment required — just Python 3.10 or newer.
 
-Requirements:
+## Usage
 
-Python 3.10+ (works with 3.6+)
+**Analyze a token directly:**
 
-⚡ Usage
-Analyze a JWT
-bash
+```bash
 python3 jaws.py <JWT_TOKEN>
-Example:
+```
 
-bash
-python3 jaws.py eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-Analyze JWT from a file
-bash
+**Analyze a token stored in a file:**
+
+```bash
 python3 jaws.py --file token.txt
-Test HMAC secret strength
-Using the built-in weak secret list:
+```
 
-bash
-python3 jaws.py <JWT_TOKEN>
-Using a custom wordlist:
+**Test against a custom wordlist:**
 
-bash
+```bash
 python3 jaws.py <JWT_TOKEN> --wordlist secrets.txt
-Disable colored output
-Useful for logs and automation:
+```
 
-bash
-python3 jaws.py <JWT_TOKEN> --no-color
-Skip secret testing
-bash
+**Skip secret cracking entirely** (useful if you just want the structural analysis):
+
+```bash
 python3 jaws.py <JWT_TOKEN> --no-crack
-Set a timeout for cracking
-bash
-python3 jaws.py <JWT_TOKEN> --wordlist huge.txt --timeout 30
-Full command options
-bash
-python3 jaws.py --help
-text
-usage: jaws.py [-h] [--file FILE] [--wordlist WORDLIST] [--no-crack] [--no-color] [--timeout TIMEOUT] [token]
+```
 
-J.A.W.S. — JWT Analysis & Weakness Scanner. A recon tool for bug bounty / API security testing.
+**Disable colored output** (handy for piping into logs or CI):
 
-positional arguments:
-  token                The JWT string to analyze
+```bash
+python3 jaws.py <JWT_TOKEN> --no-color
+```
 
-options:
-  -h, --help           show this help message and exit
-  --file FILE          Path to a file containing the JWT (first line used)
-  --wordlist WORDLIST  Path to a wordlist file for HMAC secret cracking
-  --no-crack           Skip the secret-cracking step entirely
-  --no-color           Disable colored/animated output
-  --timeout TIMEOUT    Timeout for secret cracking in seconds (default: 60)
-📊 Example Output
-text
-        _   ___        __/^\/^\/^\_______
-       | | / \ \      /  ^          ^   \_
-    _  | |/ A \ \    | J.A.W.S.           |
-   | |_/ / W \_\_\    \___  ______________/
-   |  _/ /  S  \_\        \/
-   |_|/__/     \__\  JWT Analysis & Weakness Scanner
+## Example output
 
-  Decode. Detect. Devour weak tokens.
+```
+============================================================
 
-──────────────────────────────────────────────────────────────────────
- DECODED TOKEN
-──────────────────────────────────────────────────────────────────────
+DECODED TOKEN
 
-  Header:
-   {
-     "alg": "HS256",
-     "typ": "JWT"
-   }
+Header:
+{
+  "alg": "HS256",
+  "typ": "JWT"
+}
 
-  Payload:
-   {
-     "sub": "1234567890",
-     "name": "John Doe",
-     "iat": 1516239022
-   }
+Payload:
+{
+  "username": "admin",
+  "role": "user",
+  "exp": 1893456000
+}
 
-──────────────────────────────────────────────────────────────────────
- SECRET CRACKING
-──────────────────────────────────────────────────────────────────────
 
-  Candidates tried: 4
-  ✗ SECRET RECOVERED: 'your-256-bit-secret'
+FINDINGS
 
-──────────────────────────────────────────────────────────────────────
- FINDINGS
-──────────────────────────────────────────────────────────────────────
+1. CRITICAL — Weak HMAC secret cracked
 
-  1.  CRITICAL  Weak HMAC secret cracked
-     Detail:         The signing secret was recovered: 'your-256-bit-secret'. This means anyone can forge arbitrary valid tokens (privilege escalation, account takeover, full auth bypass).
-     Recommendation: Report immediately with high severity. Include the forging PoC and recommend rotating to a long, random, high-entropy secret plus rate-limiting/monitoring for auth anomalies.
+Detail:
+The signing secret was recovered.
 
-  2.  MEDIUM  No 'exp' (expiration) claim
-     Detail:         This token has no expiration, meaning it may be valid forever once issued.
-     Recommendation: Confirm the server actually enforces its own session expiry elsewhere. If not, a leaked/stolen token never becomes invalid.
+Recommendation:
+Rotate the signing secret immediately.
 
-  3.  LOW  No 'iss' (issuer) claim
-     Detail:         Missing issuer makes it harder to validate token origin.
-     Recommendation: If the server enforces iss, test for misconfigurations.
+============================================================
 
-  4.  LOW  No 'aud' (audience) claim
-     Detail:         Missing audience claim means token might be valid across multiple services.
-     Recommendation: Test for cross-service token reuse.
+CRITICAL: 1
+```
 
-  5.  INFO  No 'jti' (JWT ID) claim
-     Detail:         Missing unique identifier makes replay detection harder.
-     Recommendation: If the server doesn't check jti, tokens may be replayable.
+## Vulnerabilities it looks for
 
-══════════════════════════════════════════════════════════════════════
- 🦈  CRITICAL EXPOSURE — this token is forgeable/bypassable
- CRITICAL: 1   MEDIUM: 1   LOW: 2   INFO: 1
-══════════════════════════════════════════════════════════════════════
-🛡️ Security Checks
-Vulnerability	Severity	Description
-alg=none	CRITICAL	Detect unsigned JWT configurations
-Weak HMAC secret	CRITICAL	Identify easily guessable signing keys
-Empty HMAC secret	CRITICAL	Detect tokens signed with an empty key
-Algorithm confusion	HIGH	Detect risky asymmetric → symmetric transitions
-crit header	HIGH	Critical extensions that must be understood
-Missing exp	MEDIUM	Tokens without expiration
-External key references	MEDIUM	jku/x5u SSRF and key injection risks
-Embedded JWK	MEDIUM	Trusted public key in header
-Missing aud	LOW	Missing audience validation
-Missing iss	LOW	Missing issuer validation
-Missing iat	LOW	Token age tracking issues
-kid header	INFO	Key lookup attack surface
-Missing sub	INFO	Subject identifier missing
-Missing jti	INFO	Replay detection weakened
-Invalid claim types	INFO	JWT spec violations
-Long token lifetime	LOW	Extended attack window
-🏗️ Project Structure
-text
-JWT-Analysis-Weakness-Scanner/
-│
-├── jaws.py              # Main scanner (400+ lines)
-├── README.md            # This documentation
+| Issue | Description |
+|-------|-------------|
+| `alg=none` | Unsigned JWT accepted as valid |
+| Weak HMAC secret | Easily guessable signing key |
+| Algorithm confusion | Risky asymmetric/symmetric mixing |
+| Missing `exp` | Token never expires |
+| Missing `aud` | No audience validation |
+| Missing `iss` | No issuer validation |
+| Missing `iat` | No way to track token age |
+| `kid` header risks | Potential key lookup injection |
+| `jku` / `x5u` risks | Untrusted external key references |
+
+## Project structure
+
+```
+jaws-jwt-scanner/
+├── jaws.py              # Main scanner
+├── README.md            # Documentation
 ├── LICENSE              # MIT License
-├── .gitignore           # Ignore Python cache files
-└── requirements.txt     # No external dependencies
+└── requirements.txt     # Dependencies (none, but listed for clarity)
+```
 
-🧪 Tested On
-✅ Windows 10/11 (Python 3.10+)
+## How it works
 
-✅ Kali Linux (Python 3.11)
+J.A.W.S follows a fairly standard JWT assessment workflow:
 
-✅ macOS (Python 3.9+)
+1. Decode the token's structure
+2. Analyze the JOSE header
+3. Inspect the security-relevant claims
+4. Flag likely weaknesses
+5. Attempt HMAC secret cracking (optional)
+6. Generate a readable findings report
 
-✅ Ubuntu 20.04/22.04
+## Limitations
 
-🔬 Methodology
-J.A.W.S follows a defensive JWT assessment workflow:
+This is a recon and analysis tool. It intentionally does **not**:
 
-Decode — Parse JWT structure (header, payload, signature)
+- Automatically exploit anything it finds
+- Attack remote systems
+- Bypass authentication on its own
+- Replace a thorough manual pentest
 
-Analyze — Inspect JOSE headers for misconfigurations
+Treat its output as a starting point for investigation, not a final verdict — always verify findings manually against the actual target.
 
-Inspect — Validate security claims (exp, iat, nbf, iss, aud, sub, jti)
+## Legal
 
-Test — Attempt HMAC secret cracking (optional)
+J.A.W.S is intended for authorized penetration testing, bug bounty programs, security research, and learning. Only run it against systems you own or have explicit permission to test. Unauthorized use against systems you don't have permission for may be illegal.
 
-Report — Generate a professional security assessment
+## About
 
-⚠️ Limitations
-J.A.W.S is an analysis and reconnaissance tool.
+I'm MuizRecon, a cybersecurity researcher focused on API security, JWT security, and bug bounty hunting. This tool grew out of my own workflow doing web application security assessments.
 
-It does NOT:
+- GitHub: [github.com/MuizRecon](https://github.com/MuizRecon)
 
-Exploit vulnerabilities automatically
+## Roadmap
 
-Attack remote systems
+Things I'd like to add:
 
-Bypass authentication by itself
+- JSON report export
+- A JWT verification mode
+- Public key analysis
+- More claim checks
+- CI/CD integration
+- Automated security scoring
 
-Replace manual penetration testing
+---
 
-Findings should always be verified against authorized targets.
-
-⚖️ Legal Disclaimer
-This tool is created for:
-
-Authorized penetration testing
-
-Bug bounty programs
-
-Security research
-
-Educational environments
-
-Only use J.A.W.S against systems you own or have explicit permission to test.
-
-Unauthorized testing may be illegal. The author assumes no responsibility for misuse.
-
-👨‍💻 Author
-Abdulmuiz Adelabu (MuizRecon)
-
-Cybersecurity Researcher
-
-Focus areas:
-
-API Security
-
-JWT Security
-
-Bug Bounty Hunting
-
-Web Application Security
-
-GitHub: github.com/MuizRecon
-
-⭐ Future Improvements
-Planned features:
-
-□ JSON report export (--json)
-□ JWT verification mode (--verify)
-□ Public key analysis (RSA/ECDSA)
-□ Additional claim checks (custom claims)
-□ CI/CD integration (GitHub Actions)
-□ Automated security scoring (0-100)
-□ Parallel wordlist cracking (multiprocessing)
-🙏 Contributing
-Issues and pull requests are welcome!
-
-Fork the repository
-
-Create your feature branch (git checkout -b feature/amazing)
-
-Commit your changes (git commit -m 'Add some amazing feature')
-
-Push to the branch (git push origin feature/amazing)
-
-Open a Pull Request
-
-📄 License
-This project is licensed under the MIT License — see the LICENSE file for details.
-
-If you find this project useful, consider giving it a ⭐ on GitHub!
-
-Made with ❤️ by MuizRecon
+If you find this useful, a star on the repo is always appreciated.
