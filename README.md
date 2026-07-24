@@ -1,3 +1,5 @@
+[![CI](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml)
+
 # J.A.W.S — JWT Analysis & Weakness Scanner
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
