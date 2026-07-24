@@ -1,22 +1,16 @@
 #!/usr/bin/env python3
 """
-J.A.W.S. — JWT Analysis & Weakness Scanner
---------------------------------------------
-A recon tool for bug bounty / API security testing.
+J.A.W.S. - JWT Analysis & Weakness Scanner
 
-Decodes a JWT, inspects its header and payload for common
-misconfigurations, and (optionally) attempts to crack the
-signing secret against a wordlist if the algorithm is HMAC-based.
-
-No external dependencies — uses only the standard library, so it
-runs anywhere without pip installs (useful on a fresh Kali box or
-inside a restricted environment).
+Decodes a JWT, checks the header/payload for common misconfigurations,
+and optionally tries to crack the signing secret against a wordlist if
+the algorithm is HMAC-based.
 
 Usage:
     python jaws.py <token>
     python jaws.py <token> --wordlist secrets.txt
     python jaws.py --file token.txt --wordlist secrets.txt
-    python jaws.py <token> --no-color     # plain output, e.g. for piping/logging
+    python jaws.py <token> --no-color
 """
 
 import argparse
@@ -28,23 +22,15 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Generator, Tuple
 
+MAX_JWT_FILE_SIZE = 10 * 1024
+MAX_WORDLIST_SIZE = 50 * 1024 * 1024
+SPINNER_UPDATE_INTERVAL = 0.2
+DEFAULT_CRACK_TIMEOUT = 60
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-MAX_JWT_FILE_SIZE = 10 * 1024  # 10 KB - JWTs are small
-MAX_WORDLIST_SIZE = 50 * 1024 * 1024  # 50 MB - sane default
-SPINNER_UPDATE_INTERVAL = 0.2  # seconds between spinner updates
-DEFAULT_CRACK_TIMEOUT = 60  # seconds before giving up on cracking
-
-# Small built-in list of common/default JWT secrets seen in the wild.
-# Real assessments should supply a much larger wordlist (e.g. the
-# "jwt-secrets" list from SecLists) via --wordlist.
 DEFAULT_WEAK_SECRETS: Tuple[str, ...] = (
     "secret", "password", "123456", "your-256-bit-secret", "jwt_secret",
     "changeme", "supersecret", "secretkey", "key", "test", "admin",
@@ -67,11 +53,11 @@ SEVERITY_ORDER: Dict[str, int] = {
 }
 
 SEVERITY_COLOR: Dict[str, str] = {
-    "CRITICAL": "\033[1;97;41m",   # bold white on red
-    "HIGH": "\033[1;31m",           # bold red
-    "MEDIUM": "\033[1;33m",         # bold yellow
-    "LOW": "\033[1;34m",            # bold blue
-    "INFO": "\033[1;90m",           # bold gray
+    "CRITICAL": "\033[1;97;41m",
+    "HIGH": "\033[1;31m",
+    "MEDIUM": "\033[1;33m",
+    "LOW": "\033[1;34m",
+    "INFO": "\033[1;90m",
 }
 
 COLOR_RESET = "\033[0m"
@@ -91,13 +77,8 @@ JAWS_BANNER = r"""
 """
 
 
-# ---------------------------------------------------------------------------
-# Data Models
-# ---------------------------------------------------------------------------
-
 @dataclass(slots=True)
 class Finding:
-    """A single security finding from JWT analysis."""
     severity: str
     title: str
     detail: str
@@ -106,7 +87,6 @@ class Finding:
 
 @dataclass(slots=True)
 class DecodedJWT:
-    """Container for a decoded JWT and its components."""
     header: Dict[str, Any]
     payload: Dict[str, Any]
     signature: bytes
@@ -115,26 +95,19 @@ class DecodedJWT:
     signature_b64: str
 
 
-# ---------------------------------------------------------------------------
-# Terminal UI Helpers
-# ---------------------------------------------------------------------------
-
 def colorize(text: str, color: str, use_color: bool = True) -> str:
-    """Wrap text in color codes if color output is enabled."""
     if not use_color:
         return text
     return f"{color}{text}{COLOR_RESET}"
 
 
 def print_banner(use_color: bool = True) -> None:
-    """Print the J.A.W.S. shark banner."""
     print(colorize(JAWS_BANNER, COLOR_CYAN, use_color))
     print(colorize("  Decode. Detect. Devour weak tokens.", COLOR_DIM, use_color))
     print()
 
 
 def section_header(title: str, use_color: bool = True) -> None:
-    """Print a formatted section header."""
     line = "─" * 70
     print(colorize(line, COLOR_DIM, use_color))
     print(colorize(f" {title}", COLOR_BOLD + COLOR_CYAN, use_color))
@@ -142,101 +115,89 @@ def section_header(title: str, use_color: bool = True) -> None:
 
 
 def risk_verdict(findings: List[Finding], use_color: bool = True) -> str:
-    """Generate a single top-line verdict."""
     if any(f.severity == "CRITICAL" for f in findings):
-        return colorize(" 🦈  CRITICAL EXPOSURE — this token is forgeable/bypassable", 
+        return colorize(" 🦈  CRITICAL EXPOSURE — this token is forgeable/bypassable",
                         SEVERITY_COLOR["CRITICAL"], use_color)
     if any(f.severity in ("HIGH", "MEDIUM") for f in findings):
-        return colorize(" ⚠  WEAKNESSES FOUND — review findings below", 
+        return colorize(" ⚠  WEAKNESSES FOUND — review findings below",
                         SEVERITY_COLOR["MEDIUM"], use_color)
     if findings:
-        return colorize(" ✓  No major issues — only minor/informational findings", 
+        return colorize(" ✓  No major issues — only minor/informational findings",
                         SEVERITY_COLOR["LOW"], use_color)
     return colorize(" ✓  Clean — no issues flagged by automated checks", COLOR_GREEN, use_color)
 
 
 class Spinner:
-    """Simple terminal spinner with time-based updates."""
-    
     def __init__(self, use_color: bool = True):
         self.use_color = use_color
         self.frames = "|/-\\"
         self.last_update = 0.0
         self.frame_index = 0
-    
+
     def update(self, tried: int, label: str = "") -> None:
-        """Update the spinner if enough time has passed."""
         if not self.use_color or not sys.stdout.isatty():
             return
-        
+
         now = time.time()
         if now - self.last_update < SPINNER_UPDATE_INTERVAL:
             return
-        
+
         self.last_update = now
         frame = self.frames[self.frame_index % len(self.frames)]
         self.frame_index += 1
-        
+
         status = f"  {colorize(frame, COLOR_MAGENTA, self.use_color)} testing secrets... {tried} tried"
         if label:
             status += f" ({label})"
-        
+
         sys.stdout.write(f"\r{status:<70}")
         sys.stdout.flush()
-    
+
     def clear(self) -> None:
-        """Clear the spinner line."""
         if not self.use_color or not sys.stdout.isatty():
             return
         sys.stdout.write("\r" + " " * 70 + "\r")
         sys.stdout.flush()
 
 
-# ---------------------------------------------------------------------------
-# JWT Parsing
-# ---------------------------------------------------------------------------
-
 def b64url_decode(segment: str) -> bytes:
-    """Base64url-decode a JWT segment, padding as needed."""
     padding = "=" * (-len(segment) % 4)
     return base64.urlsafe_b64decode(segment + padding)
 
 
 def parse_jwt(token: str) -> DecodedJWT:
-    """Parse a JWT string into its components."""
     parts = token.strip().split(".")
-    
+
     if len(parts) != 3:
         raise ValueError(
             f"Token has {len(parts)} segments, expected 3 (header.payload.signature). "
             "Is this actually a JWT?"
         )
-    
+
     header_b64, payload_b64, signature_b64 = parts
-    
-    # Validate token size before decoding
+
     if len(token) > MAX_JWT_FILE_SIZE:
         raise ValueError(f"Token exceeds maximum size ({MAX_JWT_FILE_SIZE} bytes)")
-    
+
     try:
         header = json.loads(b64url_decode(header_b64))
         if not isinstance(header, dict):
             raise ValueError("Header is not a JSON object")
     except (binascii.Error, json.JSONDecodeError) as e:
         raise ValueError(f"Could not decode/parse header: {e}")
-    
+
     try:
         payload = json.loads(b64url_decode(payload_b64))
         if not isinstance(payload, dict):
             raise ValueError("Payload is not a JSON object")
     except (binascii.Error, json.JSONDecodeError) as e:
         raise ValueError(f"Could not decode/parse payload: {e}")
-    
+
     try:
         signature = b64url_decode(signature_b64)
     except binascii.Error:
-        signature = b""  # some servers accept malformed/empty sig
-    
+        signature = b""
+
     return DecodedJWT(
         header=header,
         payload=payload,
@@ -247,14 +208,9 @@ def parse_jwt(token: str) -> DecodedJWT:
     )
 
 
-# ---------------------------------------------------------------------------
-# Security Checks
-# ---------------------------------------------------------------------------
-
 def check_alg_none(header: Dict[str, Any], findings: List[Finding]) -> None:
-    """Check for alg=none and missing alg field."""
     alg = header.get("alg", "")
-    
+
     if not isinstance(alg, str):
         findings.append(Finding(
             "INFO",
@@ -263,7 +219,7 @@ def check_alg_none(header: Dict[str, Any], findings: List[Finding]) -> None:
             "Server is violating JWT spec. Manual testing required."
         ))
         return
-    
+
     if alg.lower() == "none":
         findings.append(Finding(
             "CRITICAL",
@@ -286,7 +242,6 @@ def check_alg_none(header: Dict[str, Any], findings: List[Finding]) -> None:
 
 
 def check_typ_header(header: Dict[str, Any], findings: List[Finding]) -> None:
-    """Check the typ header per RFC 8725."""
     typ = header.get("typ")
     if typ is not None and not isinstance(typ, str):
         findings.append(Finding(
@@ -296,7 +251,7 @@ def check_typ_header(header: Dict[str, Any], findings: List[Finding]) -> None:
             "Server is violating JWT spec. Manual testing required."
         ))
         return
-    
+
     if typ is not None and typ.upper() != "JWT":
         findings.append(Finding(
             "INFO",
@@ -312,11 +267,10 @@ def check_typ_header(header: Dict[str, Any], findings: List[Finding]) -> None:
 
 
 def check_alg_confusion(header: Dict[str, Any], findings: List[Finding]) -> None:
-    """Check for asymmetric algorithms that may be vulnerable to alg confusion."""
     alg = header.get("alg", "")
     if not isinstance(alg, str):
         return
-    
+
     if alg in ("RS256", "RS384", "RS512", "ES256", "ES384", "ES512", "PS256"):
         findings.append(Finding(
             "INFO",
@@ -333,7 +287,6 @@ def check_alg_confusion(header: Dict[str, Any], findings: List[Finding]) -> None
 
 
 def check_kid_header(header: Dict[str, Any], findings: List[Finding]) -> None:
-    """Check for kid, jku, x5u, and jwk headers."""
     if "kid" in header:
         kid = header["kid"]
         findings.append(Finding(
@@ -347,7 +300,7 @@ def check_kid_header(header: Dict[str, Any], findings: List[Finding]) -> None:
             "and 'point it at a key you control' tricks (e.g. kid pointing at "
             "/dev/null combined with alg=HS256 and empty secret)."
         ))
-    
+
     if "jku" in header or "x5u" in header:
         findings.append(Finding(
             "MEDIUM",
@@ -358,7 +311,7 @@ def check_kid_header(header: Dict[str, Any], findings: List[Finding]) -> None:
             "tokens.",
             "Test whether jku/x5u can be pointed at an attacker-controlled URL."
         ))
-    
+
     if "jwk" in header:
         findings.append(Finding(
             "MEDIUM",
@@ -367,7 +320,7 @@ def check_kid_header(header: Dict[str, Any], findings: List[Finding]) -> None:
             "blindly, tokens can be forged.",
             "Test if the server uses this key for verification without validation."
         ))
-    
+
     if "crit" in header:
         crit = header["crit"]
         findings.append(Finding(
@@ -378,7 +331,7 @@ def check_kid_header(header: Dict[str, Any], findings: List[Finding]) -> None:
             "If the server doesn't validate crit, it may ignore critical "
             "security features. Check for CVE-2018-0114-like vulnerabilities."
         ))
-    
+
     if "cty" in header:
         cty = header["cty"]
         findings.append(Finding(
@@ -391,33 +344,26 @@ def check_kid_header(header: Dict[str, Any], findings: List[Finding]) -> None:
 
 
 def safe_timestamp(timestamp: Any, claim_name: str) -> Tuple[Optional[int], Optional[str]]:
-    """
-    Safely convert a timestamp claim to an integer.
-    Returns (timestamp_value, error_message).
-    """
     if timestamp is None:
         return None, None
-    
+
     if not isinstance(timestamp, (int, float)):
         try:
             timestamp = int(timestamp)
         except (TypeError, ValueError):
             return None, f"{claim_name} is not a number: {repr(timestamp)}"
-    
-    # Check for overflow
+
     try:
         datetime.fromtimestamp(timestamp, tz=timezone.utc)
     except (OverflowError, OSError, ValueError):
         return None, f"{claim_name} value is out of range: {timestamp}"
-    
+
     return int(timestamp), None
 
 
 def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
-    """Check JWT claims: exp, iat, nbf, iss, aud, sub, jti."""
     now = int(time.time())
-    
-    # --- exp (Expiration) ---
+
     if "exp" in payload:
         exp, err = safe_timestamp(payload["exp"], "exp")
         if err:
@@ -475,8 +421,7 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
             "Confirm the server actually enforces its own session expiry "
             "elsewhere. If not, a leaked/stolen token never becomes invalid."
         ))
-    
-    # --- iat (Issued At) ---
+
     if "iat" not in payload:
         findings.append(Finding(
             "LOW",
@@ -495,8 +440,7 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
                 err,
                 "Server is violating JWT spec. Manual testing required."
             ))
-    
-    # --- nbf (Not Before) ---
+
     if "nbf" in payload:
         nbf, err = safe_timestamp(payload["nbf"], "nbf")
         if err:
@@ -513,8 +457,7 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
                 f"nbf claim is set to {datetime.fromtimestamp(nbf, tz=timezone.utc).isoformat()}.",
                 "Informational only."
             ))
-    
-    # --- iss (Issuer) ---
+
     if "iss" not in payload:
         findings.append(Finding(
             "LOW",
@@ -529,8 +472,7 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
             f"iss value: {repr(payload['iss'])}",
             "Server is violating JWT spec. Manual testing required."
         ))
-    
-    # --- aud (Audience) ---
+
     if "aud" not in payload:
         findings.append(Finding(
             "LOW",
@@ -545,8 +487,7 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
             f"aud value: {repr(payload['aud'])}",
             "Server is violating JWT spec. Manual testing required."
         ))
-    
-    # --- sub (Subject) ---
+
     if "sub" not in payload:
         findings.append(Finding(
             "INFO",
@@ -561,8 +502,7 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
             f"sub value: {repr(payload['sub'])}",
             "Server is violating JWT spec. Manual testing required."
         ))
-    
-    # --- jti (JWT ID) ---
+
     if "jti" not in payload:
         findings.append(Finding(
             "INFO",
@@ -579,10 +519,6 @@ def check_claims(payload: Dict[str, Any], findings: List[Finding]) -> None:
         ))
 
 
-# ---------------------------------------------------------------------------
-# HMAC Secret Cracking
-# ---------------------------------------------------------------------------
-
 def attempt_hmac_crack(
     decoded: DecodedJWT,
     candidates: Generator[str, None, None],
@@ -590,19 +526,14 @@ def attempt_hmac_crack(
     use_color: bool = True,
     timeout: int = DEFAULT_CRACK_TIMEOUT,
 ) -> Tuple[Optional[str], int]:
-    """
-    Attempt to crack HMAC secret by brute force.
-    Returns (cracked_secret, number_of_candidates_tried).
-    """
     alg = decoded.header.get("alg", "")
     hash_fn = HMAC_ALGS.get(alg)
     if not hash_fn:
-        return None, 0  # not an HMAC-signed token
-    
+        return None, 0
+
     signing_input = f"{decoded.header_b64}.{decoded.payload_b64}".encode()
     signature = decoded.signature
-    
-    # Validate signature length
+
     digest_size = hash_fn().digest_size
     if len(signature) != digest_size:
         findings.append(Finding(
@@ -612,13 +543,12 @@ def attempt_hmac_crack(
             "This may indicate a malformed token or a different signing algorithm."
         ))
         return None, 0
-    
+
     tried = 0
     spinner = Spinner(use_color)
     start_time = time.time()
-    
+
     for candidate in candidates:
-        # Check timeout
         if time.time() - start_time > timeout:
             findings.append(Finding(
                 "INFO",
@@ -628,11 +558,10 @@ def attempt_hmac_crack(
             ))
             spinner.clear()
             return None, tried
-        
+
         spinner.update(tried, alg)
-        
+
         if not candidate:
-            # Empty secret check
             computed = hmac.new(b"", signing_input, hash_fn).digest()
             if hmac.compare_digest(computed, signature):
                 findings.append(Finding(
@@ -649,7 +578,7 @@ def attempt_hmac_crack(
                 return "(empty string)", tried + 1
             tried += 1
             continue
-        
+
         tried += 1
         computed = hmac.new(candidate.encode("utf-8"), signing_input, hash_fn).digest()
         if hmac.compare_digest(computed, signature):
@@ -665,25 +594,20 @@ def attempt_hmac_crack(
             ))
             spinner.clear()
             return candidate, tried
-    
+
     spinner.clear()
     return None, tried
 
 
-# ---------------------------------------------------------------------------
-# Report Generation
-# ---------------------------------------------------------------------------
-
 def generate_findings(decoded: DecodedJWT) -> List[Finding]:
-    """Run all checks and return a list of findings."""
     findings: List[Finding] = []
-    
+
     check_alg_none(decoded.header, findings)
     check_typ_header(decoded.header, findings)
     check_alg_confusion(decoded.header, findings)
     check_kid_header(decoded.header, findings)
     check_claims(decoded.payload, findings)
-    
+
     return findings
 
 
@@ -695,9 +619,8 @@ def print_report(
     tried_crack: bool = False,
     use_color: bool = True,
 ) -> None:
-    """Print the analysis report."""
     print_banner(use_color)
-    
+
     section_header("DECODED TOKEN", use_color)
     print(colorize("\n  Header:", COLOR_BOLD, use_color))
     for line in json.dumps(decoded.header, indent=2).splitlines():
@@ -705,20 +628,20 @@ def print_report(
     print(colorize("\n  Payload:", COLOR_BOLD, use_color))
     for line in json.dumps(decoded.payload, indent=2).splitlines():
         print("   " + line)
-    
+
     if tried_crack:
         print()
         section_header("SECRET CRACKING", use_color)
         print(f"\n  Candidates tried: {wordlist_size}")
         if cracked_secret is not None:
-            print(colorize(f"  ✗ SECRET RECOVERED: '{cracked_secret}'", 
+            print(colorize(f"  ✗ SECRET RECOVERED: '{cracked_secret}'",
                           SEVERITY_COLOR["CRITICAL"], use_color))
         else:
-            print(colorize("  ✓ No match in wordlist", 
+            print(colorize("  ✓ No match in wordlist",
                           SEVERITY_COLOR["LOW"], use_color) +
-                  colorize(" (doesn't prove it's strong — try a bigger wordlist)", 
+                  colorize(" (doesn't prove it's strong — try a bigger wordlist)",
                           COLOR_DIM, use_color))
-    
+
     print()
     section_header("FINDINGS", use_color)
     if not findings:
@@ -731,7 +654,7 @@ def print_report(
                   f"{colorize(f.title, COLOR_BOLD, use_color)}")
             print(f"     {colorize('Detail:', COLOR_DIM, use_color)}         {f.detail}")
             print(f"     {colorize('Recommendation:', COLOR_DIM, use_color)} {f.recommendation}")
-    
+
     print()
     print(colorize("═" * 70, COLOR_DIM, use_color))
     print(risk_verdict(findings, use_color))
@@ -746,26 +669,16 @@ def print_report(
     print(colorize("═" * 70, COLOR_DIM, use_color))
 
 
-# ---------------------------------------------------------------------------
-# Wordlist Streaming
-# ---------------------------------------------------------------------------
-
 def stream_wordlist(path: str) -> Generator[str, None, None]:
-    """Stream a wordlist file line by line."""
     if os.path.getsize(path) > MAX_WORDLIST_SIZE:
         raise ValueError(f"Wordlist file exceeds maximum size ({MAX_WORDLIST_SIZE} bytes)")
-    
+
     with open(path, encoding="utf-8", errors="ignore") as fh:
         for line in fh:
             yield line.strip()
 
 
-# ---------------------------------------------------------------------------
-# CLI Entry Point
-# ---------------------------------------------------------------------------
-
 def main() -> None:
-    """Main entry point for the CLI."""
     parser = argparse.ArgumentParser(
         prog="jaws.py",
         description="J.A.W.S. — JWT Analysis & Weakness Scanner. "
@@ -782,13 +695,11 @@ def main() -> None:
     parser.add_argument("--timeout", type=int, default=DEFAULT_CRACK_TIMEOUT,
                         help=f"Timeout for secret cracking in seconds (default: {DEFAULT_CRACK_TIMEOUT})")
     args = parser.parse_args()
-    
-    # Auto-disable color if output isn't a real terminal
+
     use_color = sys.stdout.isatty() and not args.no_color
-    
-    # --- Read token ---
+
     token: Optional[str] = None
-    
+
     if args.file:
         try:
             if os.path.getsize(args.file) > MAX_JWT_FILE_SIZE:
@@ -801,25 +712,22 @@ def main() -> None:
             sys.exit(1)
     elif args.token:
         token = args.token
-    
+
     if not token:
         parser.error("Provide a token as an argument or via --file")
-    
-    # --- Parse JWT ---
+
     try:
         decoded = parse_jwt(token)
     except ValueError as e:
         print(f"[!] Failed to parse token: {e}", file=sys.stderr)
         sys.exit(1)
-    
-    # --- Analyze ---
+
     findings = generate_findings(decoded)
-    
-    # --- Crack (optional) ---
+
     cracked_secret = None
     wordlist_size = 0
     tried_crack = False
-    
+
     if not args.no_crack and decoded.header.get("alg", "") in HMAC_ALGS:
         tried_crack = True
         try:
@@ -827,15 +735,14 @@ def main() -> None:
                 candidates = stream_wordlist(args.wordlist)
             else:
                 candidates = (s for s in DEFAULT_WEAK_SECRETS)
-            
+
             cracked_secret, wordlist_size = attempt_hmac_crack(
                 decoded, candidates, findings, use_color, args.timeout
             )
         except (OSError, ValueError) as e:
             print(f"[!] Error during cracking: {e}", file=sys.stderr)
             sys.exit(1)
-    
-    # --- Report ---
+
     print_report(
         decoded=decoded,
         findings=findings,
