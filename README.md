@@ -4,6 +4,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
 ![Tests](https://img.shields.io/badge/tests-pytest-blueviolet)
+[![CI](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml)
 
 **A zero-dependency Python CLI that decodes a JWT, audits it against a checklist of real-world weaknesses, and (optionally) attempts to recover weak HMAC signing secrets  built for bug bounty and API pentesting workflows.**
 
