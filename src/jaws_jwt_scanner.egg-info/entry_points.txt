@@ -1,0 +1,2 @@
+[console_scripts]
+jaws = jaws.cli:main

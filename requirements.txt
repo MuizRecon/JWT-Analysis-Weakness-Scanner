@@ -1,2 +1,2 @@
-# J.A.W.S. uses only Python standard library
-# No external dependencies required
+pytest>=7.0
+pytest-cov>=4.0

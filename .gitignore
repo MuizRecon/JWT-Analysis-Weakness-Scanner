@@ -33,3 +33,4 @@ mylist.txt
 # OS files
 .DS_Store
 Thumbs.db
+venv/
