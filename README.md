@@ -13,7 +13,7 @@ I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I
 ## Example
 
 ```bash
-$ python3 jaws.py <token>
+pip install jaws-jwt-scanner
 
 DECODED TOKEN
 Header: { "alg": "HS256", "typ": "JWT" }
