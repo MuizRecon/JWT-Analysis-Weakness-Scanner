@@ -10,6 +10,9 @@
 
 I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I was manually decoding JWTs and re-running the same handful of checks (algorithm confusion, weak secrets, missing claims) on every target. I turned that repetitive checklist into a tool that runs in seconds. It's written entirely against Python's standard library, so there's nothing to install beyond Python itself.
 
+## Example
+
+```bash
 $ python3 jaws.py <token>
 
 DECODED TOKEN
@@ -23,7 +26,7 @@ Detail: The signing secret was recovered.
 Recommendation: Rotate the signing secret immediately.
 
 CRITICAL: 1
-
+```
 
 ## Why this exists
 
@@ -98,7 +101,7 @@ python3 jaws.py <JWT_TOKEN> --timeout 120
 
 A few choices in here were deliberate, so I'm writing down the reasoning instead of leaving it implicit.
 
-**Why zero dependencies?**
+### Why zero dependencies?
 
 I stuck to Python's standard library only. A few reasons:
 
@@ -108,19 +111,19 @@ I stuck to Python's standard library only. A few reasons:
 
 The cost is I had to handle base64 padding manually and roll my own JWT decoding instead of importing something like PyJWT. Worth it, though, since this tool is meant to run in places like CI runners, throwaway containers, and bug bounty VMs, where `pip install` is sometimes blocked, slow, or just not worth the hassle for a quick check.
 
-**Why stream the wordlist instead of loading it all at once?**
+### Why stream the wordlist instead of loading it all at once?
 
 The wordlist loader yields lines one at a time instead of reading the whole file into memory. That matters once you point it at something like `rockyou.txt`, which has 10M+ lines, on a low-memory box; loading it all up front would just crash. The built-in list stays intentionally small; if you want real firepower, pass in your own with `--wordlist`.
 
-**Constant-time comparison for the signature check**
+### Constant-time comparison for the signature check
 
 I used `hmac.compare_digest()` instead of a plain `==`. A regular string comparison bails out at the first mismatched byte, which in theory leaks timing information an attacker could use to guess the secret one character at a time. Doesn't really matter for my own offline cracking loop, but it's the correct pattern, and I wanted the code to model it properly since this is exactly the mistake to watch for if you ever see it in a server's actual auth check.
 
-**Why no RS256 cracking?**
+### Why no RS256 cracking?
 
 HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically possible. RS256/ES256 use a private key instead, and brute-forcing that is computationally out of reach with current hardware, so there's no point pretending to support it. J.A.W.S. just checks the `alg` field and skips the cracking step automatically for anything starting with `RS` or `ES`.
 
-**What I'd change if I rebuilt this**
+### What I'd change if I rebuilt this
 
 - A plugin system for custom checks, since JWT claims are pretty app-specific and a one-size-fits-all check list only gets you so far
 - JWK and JWE support
@@ -128,14 +131,15 @@ HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically
 
 ## Project structure
 
+```text
 JWT-Analysis-Weakness-Scanner/
-├── jaws.py # Scanner: decoding, header/claim checks, HMAC cracking, CLI
+├── jaws.py                 # Scanner: decoding, header/claim checks, HMAC cracking, CLI
 ├── tests/
-│ └── test_jaws.py # pytest suite covering parsing and finding detection
-├── requirements.txt # No runtime deps; documents dev/test deps
-├── LICENSE # MIT
+│   └── test_jaws.py        # pytest suite covering parsing and finding detection
+├── requirements.txt        # No runtime deps; documents dev/test deps
+├── LICENSE                 # MIT
 └── README.md
-
+```
 
 The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`). Token parsing, `alg=none` detection, missing/expired `exp` handling, and finding generation are all covered.
 
