@@ -34,3 +34,4 @@ mylist.txt
 .DS_Store
 Thumbs.db
 venv/
+*.egg-info/

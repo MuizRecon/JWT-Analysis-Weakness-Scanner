@@ -6,24 +6,24 @@
 ![Tests](https://img.shields.io/badge/tests-pytest-blueviolet)
 [![CI](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml)
 
-**A zero-dependency Python CLI that decodes a JWT, audits it against a checklist of real-world weaknesses, and (optionally) attempts to recover weak HMAC signing secrets — built for bug bounty and API pentesting workflows.**
+**A zero-dependency Python CLI that decodes a JWT, audits it against a checklist of real-world weaknesses, and (optionally) attempts to recover weak HMAC signing secrets. Built for bug bounty and API pentesting workflows.**
 
 I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I was manually decoding JWTs and re-running the same handful of checks (algorithm confusion, weak secrets, missing claims) on every target. I turned that repetitive checklist into a tool that runs in seconds. It's written entirely against Python's standard library, so there's nothing to install beyond Python itself.
 
-```
 $ python3 jaws.py <token>
 
 DECODED TOKEN
-Header:  { "alg": "HS256", "typ": "JWT" }
+Header: { "alg": "HS256", "typ": "JWT" }
 Payload: { "username": "admin", "role": "user", "exp": 1893456000 }
 
 FINDINGS
-1. CRITICAL — Weak HMAC secret cracked
-   Detail: The signing secret was recovered.
-   Recommendation: Rotate the signing secret immediately.
+
+CRITICAL: Weak HMAC secret cracked
+Detail: The signing secret was recovered.
+Recommendation: Rotate the signing secret immediately.
 
 CRITICAL: 1
-```
+
 
 ## Why this exists
 
@@ -31,12 +31,12 @@ Most JWT tooling either lives inside a Burp extension or wraps a full exploitati
 
 ## Features
 
-- **Structural decoding** — instantly readable header/payload breakdown, no external decoder needed
-- **JOSE header audit** — flags risky configurations across 8 header fields (`alg`, `kid`, `jku`, `x5u`, `jwk`, `crit`, `cty`, `typ`)
-- **Claim hygiene checks** — catches missing/weak `exp`, `aud`, `iss`, `iat`
-- **HMAC secret cracking** — tests HS256/384/512 tokens against a built-in wordlist or your own, with streaming I/O (no loading huge wordlists into memory), timeout protection, and constant-time comparison
-- **Zero dependencies** — runs anywhere Python 3.10+ runs, no `pip install` required
-- **Scriptable output** — `--no-color` for clean piping into logs, files, or CI
+- **Structural decoding**: instantly readable header/payload breakdown, no external decoder needed
+- **JOSE header audit**: flags risky configurations across 8 header fields (`alg`, `kid`, `jku`, `x5u`, `jwk`, `crit`, `cty`, `typ`)
+- **Claim hygiene checks**: catches missing/weak `exp`, `aud`, `iss`, `iat`
+- **HMAC secret cracking**: tests HS256/384/512 tokens against a built-in wordlist or your own, with streaming I/O (no loading huge wordlists into memory), timeout protection, and constant-time comparison
+- **Zero dependencies**: runs anywhere Python 3.10+ runs, no `pip install` required
+- **Scriptable output**: `--no-color` for clean piping into logs, files, or CI
 
 ## Install & run
 
@@ -102,23 +102,23 @@ A few choices in here were deliberate, so I'm writing down the reasoning instead
 
 I stuck to Python's standard library only. A few reasons:
 
-- It just works — no `pip install` step, no waiting on a CI runner, no dependency conflicts
+- It just works. No `pip install` step, no waiting on a CI runner, no dependency conflicts
 - No supply chain risk from pulling in random third-party packages
 - Behaves the same no matter what system you drop it on
 
-The cost is I had to handle base64 padding manually and roll my own JWT decoding instead of importing something like PyJWT. Worth it, though — this tool is meant to run in places like CI runners, throwaway containers, and bug bounty VMs, where `pip install` is sometimes blocked, slow, or just not worth the hassle for a quick check.
+The cost is I had to handle base64 padding manually and roll my own JWT decoding instead of importing something like PyJWT. Worth it, though, since this tool is meant to run in places like CI runners, throwaway containers, and bug bounty VMs, where `pip install` is sometimes blocked, slow, or just not worth the hassle for a quick check.
 
 **Why stream the wordlist instead of loading it all at once?**
 
-The wordlist loader yields lines one at a time instead of reading the whole file into memory. That matters once you point it at something like `rockyou.txt` — 10M+ lines — on a low-memory box; loading it all up front would just crash. The built-in list stays intentionally small; if you want real firepower, pass in your own with `--wordlist`.
+The wordlist loader yields lines one at a time instead of reading the whole file into memory. That matters once you point it at something like `rockyou.txt`, which has 10M+ lines, on a low-memory box; loading it all up front would just crash. The built-in list stays intentionally small; if you want real firepower, pass in your own with `--wordlist`.
 
 **Constant-time comparison for the signature check**
 
-I used `hmac.compare_digest()` instead of a plain `==`. A regular string comparison bails out at the first mismatched byte, which in theory leaks timing information an attacker could use to guess the secret one character at a time. Doesn't really matter for my own offline cracking loop, but it's the correct pattern and I wanted the code to model it properly — since this is exactly the mistake to watch for if you ever see it in a server's actual auth check.
+I used `hmac.compare_digest()` instead of a plain `==`. A regular string comparison bails out at the first mismatched byte, which in theory leaks timing information an attacker could use to guess the secret one character at a time. Doesn't really matter for my own offline cracking loop, but it's the correct pattern, and I wanted the code to model it properly since this is exactly the mistake to watch for if you ever see it in a server's actual auth check.
 
 **Why no RS256 cracking?**
 
-HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically possible. RS256/ES256 use a private key instead — brute-forcing that is computationally out of reach with current hardware, so there's no point pretending to support it. J.A.W.S. just checks the `alg` field and skips the cracking step automatically for anything starting with `RS` or `ES`.
+HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically possible. RS256/ES256 use a private key instead, and brute-forcing that is computationally out of reach with current hardware, so there's no point pretending to support it. J.A.W.S. just checks the `alg` field and skips the cracking step automatically for anything starting with `RS` or `ES`.
 
 **What I'd change if I rebuilt this**
 
@@ -128,17 +128,16 @@ HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically
 
 ## Project structure
 
-```
 JWT-Analysis-Weakness-Scanner/
-├── jaws.py              # Scanner: decoding, header/claim checks, HMAC cracking, CLI
+├── jaws.py # Scanner: decoding, header/claim checks, HMAC cracking, CLI
 ├── tests/
-│   └── test_jaws.py     # pytest suite covering parsing and finding detection
-├── requirements.txt     # No runtime deps; documents dev/test deps
-├── LICENSE              # MIT
+│ └── test_jaws.py # pytest suite covering parsing and finding detection
+├── requirements.txt # No runtime deps; documents dev/test deps
+├── LICENSE # MIT
 └── README.md
-```
 
-The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`) — token parsing, `alg=none` detection, missing/expired `exp` handling, and finding generation are all covered.
+
+The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`). Token parsing, `alg=none` detection, missing/expired `exp` handling, and finding generation are all covered.
 
 ## Limitations by design
 
