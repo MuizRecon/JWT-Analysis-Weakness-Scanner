@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jaws-jwt-scanner"
+version = "1.0.0"
+description = "JWT Analysis & Weakness Scanner - Zero-dependency security tool"
+readme = "README.md"
+authors = [
+    {name = "Abdulmuiz Adelabu", email = "your-email@example.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+jaws = "jaws.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner"
+Repository = "https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner"
+Issues = "https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

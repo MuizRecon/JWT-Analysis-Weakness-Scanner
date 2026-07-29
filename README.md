@@ -10,20 +10,20 @@
 
 I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I was manually decoding JWTs and re-running the same handful of checks (algorithm confusion, weak secrets, missing claims) on every target. I turned that repetitive checklist into a tool that runs in seconds. It's written entirely against Python's standard library, so there's nothing to install beyond Python itself.
 
-```
 $ python3 jaws.py <token>
 
 DECODED TOKEN
-Header:  { "alg": "HS256", "typ": "JWT" }
+Header: { "alg": "HS256", "typ": "JWT" }
 Payload: { "username": "admin", "role": "user", "exp": 1893456000 }
 
 FINDINGS
-1. CRITICAL: Weak HMAC secret cracked
-   Detail: The signing secret was recovered.
-   Recommendation: Rotate the signing secret immediately.
+
+CRITICAL: Weak HMAC secret cracked
+Detail: The signing secret was recovered.
+Recommendation: Rotate the signing secret immediately.
 
 CRITICAL: 1
-```
+
 
 ## Why this exists
 
@@ -128,15 +128,14 @@ HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically
 
 ## Project structure
 
-```
 JWT-Analysis-Weakness-Scanner/
-├── jaws.py              # Scanner: decoding, header/claim checks, HMAC cracking, CLI
+├── jaws.py # Scanner: decoding, header/claim checks, HMAC cracking, CLI
 ├── tests/
-│   └── test_jaws.py     # pytest suite covering parsing and finding detection
-├── requirements.txt     # No runtime deps; documents dev/test deps
-├── LICENSE              # MIT
+│ └── test_jaws.py # pytest suite covering parsing and finding detection
+├── requirements.txt # No runtime deps; documents dev/test deps
+├── LICENSE # MIT
 └── README.md
-```
+
 
 The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`). Token parsing, `alg=none` detection, missing/expired `exp` handling, and finding generation are all covered.
 
