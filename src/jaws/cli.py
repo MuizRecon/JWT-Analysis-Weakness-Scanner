@@ -2,12 +2,12 @@ import argparse
 import sys
 import time
 from typing import Optional
-
 from .models import AnalysisResult, DecodedToken, Severity
 from .decoder import decode_token, is_token_valid_structure
 from .auditor import JWTAuditor
 from .cracker import HMACCracker
 from .utils import print_finding, read_token_from_file, load_wordlist
+
 
 BUILTIN_WORDLIST = [
     "secret", "password", "123456", "admin", "jwt", "key", "secretkey",
@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
 
 def get_token(args: argparse.Namespace) -> Optional[str]:
     if args.token:
-        return args.token
+        return args.token.strip()
     if args.file:
         return read_token_from_file(args.file)
     return None
@@ -70,7 +70,7 @@ def get_token(args: argparse.Namespace) -> Optional[str]:
 def get_wordlist(args: argparse.Namespace):
     if args.wordlist:
         return load_wordlist(args.wordlist)
-    return (w for w in BUILTIN_WORDLIST)
+    return BUILTIN_WORDLIST
 
 
 def main() -> int:
@@ -106,13 +106,13 @@ def main() -> int:
 
     auditor = JWTAuditor()
     findings = auditor.audit(decoded)
+
     result = AnalysisResult(token=decoded, findings=findings)
 
     if not args.no_crack and header.get('alg', '').startswith('HS'):
         print("=== HMAC CRACKING ===")
         cracker = HMACCracker(decoded, timeout=args.timeout)
         wordlist = get_wordlist(args)
-
         start = time.time()
         recovered = cracker.crack(wordlist)
         elapsed = time.time() - start
@@ -129,13 +129,8 @@ def main() -> int:
     if not findings:
         print("No findings detected.")
     else:
-        severity_order = {
-            Severity.CRITICAL: 0,
-            Severity.HIGH: 1,
-            Severity.MEDIUM: 2,
-            Severity.LOW: 3,
-            Severity.INFO: 4,
-        }
+        severity_order = {Severity.CRITICAL: 0, Severity.HIGH: 1,
+                         Severity.MEDIUM: 2, Severity.LOW: 3, Severity.INFO: 4}
         sorted_findings = sorted(findings, key=lambda f: severity_order.get(f.severity, 5))
 
         for finding in sorted_findings:
