@@ -6,7 +6,6 @@ from .models import Finding, Severity, DecodedToken
 
 
 class JWTAuditor:
-   
     def __init__(self):
         self.findings: List[Finding] = []
 
@@ -14,11 +13,10 @@ class JWTAuditor:
         self.findings = []
         self._check_header(token.header)
         self._check_claims(token.payload)
-
         return self.findings
 
     def _check_header(self, header: Dict[str, Any]) -> None:
-      
+        # Check for alg=none
         if header.get('alg', '').lower() == 'none':
             self.findings.append(Finding(
                 severity=Severity.CRITICAL,
@@ -28,7 +26,8 @@ class JWTAuditor:
                 field='alg'
             ))
 
-       weak_algs = ['HS256', 'HS384', 'HS512']
+        # Check for symmetric algorithms (HS256, HS384, HS512)
+        weak_algs = ['HS256', 'HS384', 'HS512']
         if header.get('alg') in weak_algs:
             self.findings.append(Finding(
                 severity=Severity.MEDIUM,
@@ -93,7 +92,6 @@ class JWTAuditor:
             ))
 
     def _check_claims(self, payload: Dict[str, Any]) -> None:
-        """Claim-level security checks."""
         now = int(time.time())
 
         if 'exp' not in payload:
@@ -118,7 +116,7 @@ class JWTAuditor:
                 self.findings.append(Finding(
                     severity=Severity.LOW,
                     title='Token expiring soon',
-                    detail=f'Token expires in less than 5 minutes.',
+                    detail='Token expires in less than 5 minutes.',
                     recommendation='Refresh the token soon.',
                     field='exp'
                 ))
