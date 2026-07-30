@@ -6,22 +6,19 @@ from .models import Finding, Severity, DecodedToken
 
 
 class JWTAuditor:
-    """Audits a JWT against a checklist of common weaknesses."""
-
+   
     def __init__(self):
         self.findings: List[Finding] = []
 
     def audit(self, token: DecodedToken) -> List[Finding]:
-        """Run all checks against a decoded token."""
         self.findings = []
-
         self._check_header(token.header)
         self._check_claims(token.payload)
 
         return self.findings
 
     def _check_header(self, header: Dict[str, Any]) -> None:
-        """JOSE header security checks."""
+      
         if header.get('alg', '').lower() == 'none':
             self.findings.append(Finding(
                 severity=Severity.CRITICAL,
@@ -31,7 +28,7 @@ class JWTAuditor:
                 field='alg'
             ))
 
-        weak_algs = ['HS256']
+       weak_algs = ['HS256', 'HS384', 'HS512']
         if header.get('alg') in weak_algs:
             self.findings.append(Finding(
                 severity=Severity.MEDIUM,
