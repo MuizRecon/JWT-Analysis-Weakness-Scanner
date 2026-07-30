@@ -8,7 +8,7 @@
 
 **A zero-dependency Python CLI that decodes a JWT, audits it against a checklist of real-world weaknesses, and (optionally) attempts to recover weak HMAC signing secrets. Built for bug bounty and API pentesting workflows.**
 
-I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I was manually decoding JWTs and re-running the same handful of checks (algorithm confusion, weak secrets, missing claims) on every target. I turned that repetitive checklist into a tool that runs in seconds. It's written entirely against Python's standard library, so there's nothing to install beyond Python itself.
+I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I was manually decoding JWTs and re-running the same handful of checks (weak secrets, risky header fields, missing claims) on every target. I turned that repetitive checklist into a tool that runs in seconds. It's written entirely against Python's standard library, so there's nothing to install beyond Python itself.
 
 ## Example
 
@@ -35,7 +35,7 @@ Most JWT tooling either lives inside a Burp extension or wraps a full exploitati
 ## Features
 
 - **Structural decoding**: instantly readable header/payload breakdown, no external decoder needed
-- **JOSE header audit**: flags risky configurations across 8 header fields (`alg`, `kid`, `jku`, `x5u`, `jwk`, `crit`, `cty`, `typ`)
+- **JOSE header audit**: flags risky configurations across 7 header fields (`alg`, `kid`, `jku`, `x5u`, `jwk`, `crit`, `cty`)
 - **Claim hygiene checks**: catches missing/weak `exp`, `aud`, `iss`, `iat`
 - **HMAC secret cracking**: tests HS256/384/512 tokens against a built-in wordlist or your own, with streaming I/O (no loading huge wordlists into memory), timeout protection, and constant-time comparison
 - **Zero dependencies**: runs anywhere Python 3.10+ runs, no `pip install` required
@@ -46,47 +46,47 @@ Most JWT tooling either lives inside a Burp extension or wraps a full exploitati
 ```bash
 git clone https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner.git
 cd JWT-Analysis-Weakness-Scanner
-python3 jaws.py <YOUR_JWT_TOKEN>
+python -m jaws.cli <YOUR_JWT_TOKEN>
 ```
 
-No virtual environment or dependency install needed for normal use.
+No virtual environment or dependency install needed for normal use. Running from the repo root works without installing the package, since it's invoked as a module (`python -m jaws.cli`). If you install it (`pip install .`), the `jaws` command becomes available directly, per the entry point in `pyproject.toml`.
 
 ## Usage
 
 ```bash
 # Analyze a token directly
-python3 jaws.py <JWT_TOKEN>
+python -m jaws.cli <JWT_TOKEN>
 
 # Analyze a token stored in a file (first line used)
-python3 jaws.py --file token.txt
+python -m jaws.cli --file token.txt
 
 # Crack against a custom wordlist
-python3 jaws.py <JWT_TOKEN> --wordlist secrets.txt
+python -m jaws.cli <JWT_TOKEN> --wordlist secrets.txt
 
 # Skip secret cracking, structural analysis only
-python3 jaws.py <JWT_TOKEN> --no-crack
+python -m jaws.cli <JWT_TOKEN> --no-crack
 
-# Disable colored/animated output (for CI or log files)
-python3 jaws.py <JWT_TOKEN> --no-color
+# Disable colored output (for CI or log files)
+python -m jaws.cli <JWT_TOKEN> --no-color
 
 # Adjust the cracking timeout (default 60s)
-python3 jaws.py <JWT_TOKEN> --timeout 120
+python -m jaws.cli <JWT_TOKEN> --timeout 120
 ```
 
 ## What it checks
 
 | Header / Claim | Risk it's checking for |
 |---|---|
-| `alg` | `alg=none` and other insecure algorithm configurations |
-| `kid` | Key-lookup injection attack surface |
-| `jku` / `x5u` | Untrusted external key/certificate references |
-| `jwk` | Embedded public keys accepted at face value |
-| `crit` | Unrecognized critical extension usage |
-| `typ` / `cty` | Type inconsistency, nested-JWT indicators |
-| `exp` | Tokens that never expire |
-| `aud` / `iss` | Missing audience or issuer validation |
-| `iat` | No way to track token age |
-| HMAC secret | Weak/guessable HS256/384/512 signing keys |
+| `alg` | `alg=none` (critical), and flags `HS256` as a symmetric algorithm worth double-checking |
+| `kid` | Presence of `kid`, flagged as potential key-lookup injection surface (value itself isn't analyzed) |
+| `jku` / `x5u` | Presence of an external key/certificate URL reference |
+| `jwk` | Presence of an embedded public key |
+| `crit` | Presence of critical extensions |
+| `cty` | `cty=JWT`, indicating a possible nested JWT |
+| `exp` | Missing, expired, or soon-to-expire tokens |
+| `aud` / `iss` | Missing audience or issuer claims |
+| `iat` | Missing issued-at claim |
+| HMAC secret | Weak/guessable HS256/384/512 signing keys, cracked against a wordlist |
 
 ## How it works
 
@@ -133,15 +133,23 @@ HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically
 
 ```text
 JWT-Analysis-Weakness-Scanner/
-├── jaws.py                 # Scanner: decoding, header/claim checks, HMAC cracking, CLI
+├── src/jaws/
+│   ├── __init__.py       # Package exports
+│   ├── cli.py            # Argument parsing and CLI entry point
+│   ├── decoder.py        # Base64/JSON decoding of header, payload, signature
+│   ├── auditor.py        # JOSE header and claim security checks
+│   ├── cracker.py        # HMAC secret cracking (HS256/384/512)
+│   ├── models.py         # Finding, Severity, DecodedToken, AnalysisResult
+│   └── utils.py          # Output formatting, file/wordlist reading
 ├── tests/
-│   └── test_jaws.py        # pytest suite covering parsing and finding detection
-├── requirements.txt        # No runtime deps; documents dev/test deps
-├── LICENSE                 # MIT
+│   └── test_jaws.py      # pytest suite covering decoding, auditing, and cracking
+├── pyproject.toml        # Packaging config, console-script entry point
+├── requirements.txt      # No runtime deps; documents dev/test deps
+├── LICENSE               # MIT
 └── README.md
 ```
 
-The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`). Token parsing, `alg=none` detection, missing/expired `exp` handling, and finding generation are all covered.
+The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`). Token parsing, `alg=none` detection, missing/expired `exp` handling, and core finding generation are covered; the header checks for `jku`, `x5u`, `jwk`, and `crit` are not yet covered by tests.
 
 ## Limitations by design
 
