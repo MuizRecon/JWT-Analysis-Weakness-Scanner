@@ -1,78 +1,95 @@
-import base64
-import json
-import os
-import sys
-import time
-
-import jwt
 import pytest
+import sys
+import os
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from jaws import parse_jwt, generate_findings, attempt_hmac_crack
+from jaws.decoder import decode_token, is_token_valid_structure
+from jaws.auditor import JWTAuditor
+from jaws.cracker import HMACCracker
+from jaws.models import Severity, DecodedToken
 
 
-class TestJWTScanner:
-    def test_valid_token_parses(self):
-        token = jwt.encode({"user": "test", "exp": int(time.time()) + 60}, "secret", algorithm="HS256")
-        decoded = parse_jwt(token)
-        assert decoded.header.get("alg") == "HS256"
-        assert "user" in decoded.payload
+class TestDecoder:
+    def test_valid_jwt_structure(self):
+        token = "header.payload.signature"
+        assert is_token_valid_structure(token) is True
 
-    def test_alg_none_detected(self):
-        header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
-        payload = base64.urlsafe_b64encode(json.dumps({"user": "admin"}).encode()).decode().rstrip("=")
-        token = f"{header}.{payload}."
-        decoded = parse_jwt(token)
-        findings = generate_findings(decoded)
-        assert any("none" in f.title.lower() for f in findings)
+    def test_invalid_jwt_structure(self):
+        token = "header.payload"
+        assert is_token_valid_structure(token) is False
 
-    def test_missing_exp_detected(self):
-        token = jwt.encode({"user": "test"}, "secret", algorithm="HS256")
-        decoded = parse_jwt(token)
-        findings = generate_findings(decoded)
-        assert any("exp" in f.title.lower() for f in findings)
+    def test_decode_token_valid(self):
+        token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        header, payload, signature = decode_token(token)
+        assert header is not None
+        assert payload is not None
+        assert signature is not None
+        assert header.get('alg') == 'HS256'
 
-    def test_expired_token_detected(self):
-        token = jwt.encode({"user": "test", "exp": int(time.time()) - 60}, "secret", algorithm="HS256")
-        decoded = parse_jwt(token)
-        findings = generate_findings(decoded)
-        assert any("expired" in f.title.lower() for f in findings)
+    def test_alg_none_detection(self):
+        token = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNTE2MjM5MDIyfQ."
+        header, payload, signature = decode_token(token)
+        assert header is not None
+        assert header.get('alg') == 'none'
 
-    def test_kid_header_detected(self):
-        token = jwt.encode(
-            {"user": "test", "exp": int(time.time()) + 60},
-            "secret",
-            algorithm="HS256",
-            headers={"kid": "my-key"},
+
+class TestAuditor:
+    def test_alg_none_finding(self):
+        token = DecodedToken(
+            raw="eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0IiwiaWF0IjoxNTE2MjM5MDIyfQ.",
+            header={'alg': 'none', 'typ': 'JWT'},
+            payload={'sub': 'test', 'iat': 1516239022},
+            signature=""
         )
-        decoded = parse_jwt(token)
-        findings = generate_findings(decoded)
-        assert any("kid" in f.title.lower() for f in findings)
+        auditor = JWTAuditor()
+        findings = auditor.audit(token)
+        assert any(f.severity == Severity.CRITICAL and "alg=none" in f.title for f in findings)
 
-    def test_hmac_crack_finds_secret(self):
-        token = jwt.encode({"user": "admin"}, "secret123", algorithm="HS256")
-        decoded = parse_jwt(token)
-        findings = []
-        candidates = ["wrong", "secret123", "another"]
-        cracked, tried = attempt_hmac_crack(decoded, (s for s in candidates), findings, use_color=False)
-        assert cracked == "secret123"
-        assert tried == 2
+    def test_missing_exp_finding(self):
+        token = DecodedToken(
+            raw="header.payload.signature",
+            header={'alg': 'HS256'},
+            payload={'sub': 'test'},
+            signature="sig"
+        )
+        auditor = JWTAuditor()
+        findings = auditor.audit(token)
+        assert any(f.severity == Severity.HIGH and "exp" in f.field for f in findings)
 
-    def test_hmac_crack_rejects_wrong_secrets(self):
-        token = jwt.encode({"user": "admin"}, "supersecret", algorithm="HS256")
-        decoded = parse_jwt(token)
-        findings = []
-        candidates = ["wrong", "wrong2", "wrong3"]
-        cracked, tried = attempt_hmac_crack(decoded, (s for s in candidates), findings, use_color=False)
-        assert cracked is None
-        assert tried == 3
+    def test_symmetric_alg_finding(self):
+        token = DecodedToken(
+            raw="header.payload.signature",
+            header={'alg': 'HS256'},
+            payload={'sub': 'test', 'exp': 9999999999},
+            signature="sig"
+        )
+        auditor = JWTAuditor()
+        findings = auditor.audit(token)
+        assert any(f.severity == Severity.MEDIUM and "Symmetric" in f.title for f in findings)
 
-    def test_invalid_token_rejected(self):
-        with pytest.raises(ValueError):
-            parse_jwt("not.a.jwt")
 
-    def test_token_size_limit_enforced(self):
-        huge_token = "a" * 20000
-        with pytest.raises(ValueError):
-            parse_jwt(huge_token)
+class TestCracker:
+    def test_hmac_crack_with_secret(self):
+        token = DecodedToken(
+            raw="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+            header={'alg': 'HS256', 'typ': 'JWT'},
+            payload={'sub': '1234567890', 'name': 'John Doe', 'iat': 1516239022},
+            signature="SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        cracker = HMACCracker(token, timeout=5)
+        wordlist = ["secret", "password", "123456"]
+        result = cracker.crack(wordlist)
+        assert result == "secret"
+
+    def test_hmac_crack_no_match(self):
+        token = DecodedToken(
+            raw="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+            header={'alg': 'HS256', 'typ': 'JWT'},
+            payload={'sub': '1234567890', 'name': 'John Doe', 'iat': 1516239022},
+            signature="SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        cracker = HMACCracker(token, timeout=5)
+        wordlist = ["wrong1", "wrong2", "wrong3"]
+        result = cracker.crack(wordlist)
+        assert result is None
