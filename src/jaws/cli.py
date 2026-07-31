@@ -87,8 +87,8 @@ def main() -> int:
 
     header, payload, signature = decode_token(token)
     if "error" in header or "error" in payload:
-    print("Error: Failed to decode JWT – invalid header or payload format.", file=sys.stderr)
-    return 1
+        print("Error: Failed to decode JWT – invalid header or payload format.", file=sys.stderr)
+        return 1
 
     decoded = DecodedToken(
         raw=token,
