@@ -33,8 +33,10 @@ def decode_token(token: str) -> Tuple[Optional[Dict], Optional[Dict], Optional[s
 
 
 def is_token_valid_structure(token: str) -> bool:
-    """Check if token has valid JWT structure (at least 2 parts, third optional)."""
     parts = token.split(".")
-    if len(parts) < 2 or len(parts) > 3:
+
+    if len(parts) != 3:
         return False
-    return all((parts[0], parts[1])) 
+
+    header, payload, _ = parts
+    return bool(header and payload)
