@@ -109,7 +109,7 @@ def main() -> int:
 
     result = AnalysisResult(token=decoded, findings=findings)
 
-    if not args.no_crack and header.get('alg', '').startswith('HS'):
+       if not args.no_crack and header.get('alg', '').startswith('HS'):
         print("=== HMAC CRACKING ===")
         cracker = HMACCracker(decoded, timeout=args.timeout)
         wordlist = get_wordlist(args)
@@ -117,19 +117,19 @@ def main() -> int:
         recovered = cracker.crack(wordlist)
         elapsed = time.time() - start
 
-      if recovered:
-    result.secret_recovered = recovered
-    result.cracking_time = elapsed
-    print(f"✓ Secret recovered: {recovered} (in {elapsed:.2f}s)")
-    findings.append(Finding(
-        severity=Severity.CRITICAL,
-        title="Weak HMAC secret cracked",
-        detail=f'The signing secret was recovered: "{recovered}".',
-        recommendation="Rotate the signing secret immediately.",
-        field="signature"
-    ))
-else:
-    print(f"✗ Secret not found (timeout: {args.timeout}s, elapsed: {elapsed:.2f}s)")
+        if recovered:
+            result.secret_recovered = recovered
+            result.cracking_time = elapsed
+            print(f"✓ Secret recovered: {recovered} (in {elapsed:.2f}s)")
+            findings.append(Finding(
+                severity=Severity.CRITICAL,
+                title="Weak HMAC secret cracked",
+                detail=f'The signing secret was recovered: "{recovered}".',
+                recommendation="Rotate the signing secret immediately.",
+                field="signature"
+            ))
+        else:
+            print(f"✗ Secret not found (timeout: {args.timeout}s, elapsed: {elapsed:.2f}s)")
 
 print()
 
