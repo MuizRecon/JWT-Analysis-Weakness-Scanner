@@ -2,8 +2,7 @@ import argparse
 import sys
 import time
 from typing import Optional
-from .models import AnalysisResult, DecodedToken, Severity
-from .decoder import decode_token, is_token_valid_structure
+from .models import AnalysisResult, DecodedToken, Finding, Severityfrom .decoder import decode_token, is_token_valid_structure
 from .auditor import JWTAuditor
 from .cracker import HMACCracker
 from .utils import print_finding, read_token_from_file, load_wordlist
@@ -117,10 +116,17 @@ def main() -> int:
         recovered = cracker.crack(wordlist)
         elapsed = time.time() - start
 
-        if recovered:
+      if recovered:
             result.secret_recovered = recovered
             result.cracking_time = elapsed
             print(f"✓ Secret recovered: {recovered} (in {elapsed:.2f}s)")
+            findings.append(Finding(
+                severity=Severity.CRITICAL,
+                 title="Weak HMAC secret cracked",
+                detail=f'The signing secret was recovered: "{recovered}".',
+                recommendation="Rotate the signing secret immediately.",
+                field="signature"
+            ))
         else:
             print(f"✗ Secret not found (timeout: {args.timeout}s, elapsed: {elapsed:.2f}s)")
         print()
