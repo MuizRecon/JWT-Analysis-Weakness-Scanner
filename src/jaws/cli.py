@@ -2,7 +2,8 @@ import argparse
 import sys
 import time
 from typing import Optional
-from .models import AnalysisResult, DecodedToken, Finding, Severityfrom .decoder import decode_token, is_token_valid_structure
+from .models import AnalysisResult, DecodedToken, Finding, Severityfrom .decoder
+import decode_token, is_token_valid_structure
 from .auditor import JWTAuditor
 from .cracker import HMACCracker
 from .utils import print_finding, read_token_from_file, load_wordlist
