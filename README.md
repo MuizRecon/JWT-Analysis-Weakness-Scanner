@@ -29,7 +29,6 @@ Output:
 
 Most JWT tooling either lives inside a Burp extension or wraps a full exploitation framework. J.A.W.S. is deliberately narrow: it is a fast, scriptable recon and triage step you run on a token before deciding where to spend your manual testing time. It tells you where the weaknesses probably are. You still verify and exploit them yourself.
 
-[ADD ONE OR TWO SENTENCES NAMING TOOLS YOU COMPARED IT WITH (for example jwt_tool or jwt-hack), what they do better, and what J.A.W.S. does differently. Keep it fair and specific.]
 
 ## What it does
 
