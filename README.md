@@ -1,92 +1,89 @@
-# J.A.W.S - JWT Analysis & Weakness Scanner
+# J.A.W.S. | JWT Analysis & Weakness Scanner
 
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
-![Tests](https://img.shields.io/badge/tests-pytest-blueviolet)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Dependencies](https://img.shields.io/badge/runtime%20dependencies-zero-brightgreen)](#why-zero-dependencies)
+[![Tests](https://img.shields.io/badge/tests-pytest-blueviolet)](tests/)
 [![CI](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner/actions/workflows/ci.yml)
 
-**A zero-dependency Python CLI that decodes a JWT, audits it against a checklist of real-world weaknesses, and (optionally) attempts to recover weak HMAC signing secrets. Built for bug bounty and API pentesting workflows.**
+A Python CLI with no runtime dependencies. It decodes a JWT, checks it against a list of common weaknesses, and can try to recover weak HMAC signing secrets. Built for bug bounty and API pentesting.
 
-I built J.A.W.S mid-engagement, during a live bug bounty test, after realizing I was manually decoding JWTs and re-running the same handful of checks (weak secrets, risky header fields, missing claims) on every target. I turned that repetitive checklist into a tool that runs in seconds. It's written entirely against Python's standard library, so there's nothing to install beyond Python itself.
+I wrote it during a live bug bounty test, after noticing I was decoding tokens by hand and running the same handful of checks on every target. I turned that routine into a tool that finishes in seconds. It only uses Python's standard library, so there is nothing to install beyond Python itself.
 
 ## Example
 
-```bash
-python -m jaws.cli <token>
+Command:
 
-DECODED TOKEN
-Header: { "alg": "HS256", "typ": "JWT" }
-Payload: { "username": "admin", "role": "user", "exp": 1893456000 }
+```
+jaws <A_TEST_TOKEN_YOU_CREATED>
+```
 
-FINDINGS
+Output:
 
-CRITICAL: Weak HMAC secret cracked
-Detail: The signing secret was recovered.
-Recommendation: Rotate the signing secret immediately.
-
-CRITICAL: 1
+```
+[PASTE THE REAL OUTPUT FROM A TEST TOKEN YOU CREATED.
+ Include the recovered secret so people see what a hit looks like.]
 ```
 
 ## Why this exists
 
-Most JWT tooling either lives inside a Burp extension or wraps a full exploitation framework. J.A.W.S is intentionally narrow: it's a fast, scriptable **recon and triage** layer you point at a token before you decide where to spend your manual testing time. It tells you where the weaknesses likely are, you still verify and exploit them yourself.
+Most JWT tooling either lives inside a Burp extension or wraps a full exploitation framework. J.A.W.S. is deliberately narrow: it is a fast, scriptable recon and triage step you run on a token before deciding where to spend your manual testing time. It tells you where the weaknesses probably are. You still verify and exploit them yourself.
 
-## Features
+[ADD ONE OR TWO SENTENCES NAMING TOOLS YOU COMPARED IT WITH (for example jwt_tool or jwt-hack), what they do better, and what J.A.W.S. does differently. Keep it fair and specific.]
 
-- **Structural decoding**: instantly readable header/payload breakdown, no external decoder needed
-- **JOSE header audit**: flags risky configurations across 7 header fields (`alg`, `kid`, `jku`, `x5u`, `jwk`, `crit`, `cty`)
-- **Claim hygiene checks**: catches missing/weak `exp`, `aud`, `iss`, `iat`
-- **HMAC secret cracking**: tests HS256/384/512 tokens against a built-in wordlist or your own, with streaming I/O (no loading huge wordlists into memory), timeout protection, and constant-time comparison
-- **Zero dependencies**: runs anywhere Python 3.10+ runs, no `pip install` required
-- **Scriptable output**: `--no-color` for clean piping into logs, files, or CI
+## What it does
+
+It decodes the header, payload and signature into something readable, audits eight JOSE header fields (`alg`, `kid`, `jku`, `x5u`, `jwk`, `crit`, `cty`, `typ`), and checks the claims that matter for security (`exp`, `aud`, `iss`, `iat`). For HS256, HS384 and HS512 tokens it can also test the signing secret against a built-in wordlist or your own. Findings are ranked by severity. Use `--no-color` when piping output into logs or CI.
 
 ## Install & run
 
-```bash
+```
 git clone https://github.com/MuizRecon/JWT-Analysis-Weakness-Scanner.git
 cd JWT-Analysis-Weakness-Scanner
-python -m jaws.cli <YOUR_JWT_TOKEN>
+pip install .
+jaws <YOUR_JWT_TOKEN>
 ```
 
-No virtual environment or dependency install needed for normal use. Running from the repo root works without installing the package, since it's invoked as a module (`python -m jaws.cli`). If you install it (`pip install .`), the `jaws` command becomes available directly, per the entry point in `pyproject.toml`.
+Requires Python 3.10 or newer. There are no runtime dependencies, so `pip install .` only installs J.A.W.S. itself and adds the `jaws` command. `pytest` is only needed to run the tests.
 
 ## Usage
 
-```bash
+```
 # Analyze a token directly
-python -m jaws.cli <JWT_TOKEN>
+jaws <JWT_TOKEN>
 
-# Analyze a token stored in a file (first line used)
-python -m jaws.cli --file token.txt
+# Analyze a token stored in a file (first line is used)
+jaws --file token.txt
 
 # Crack against a custom wordlist
-python -m jaws.cli <JWT_TOKEN> --wordlist secrets.txt
+jaws <JWT_TOKEN> --wordlist secrets.txt
 
 # Skip secret cracking, structural analysis only
-python -m jaws.cli <JWT_TOKEN> --no-crack
+jaws <JWT_TOKEN> --no-crack
 
-# Disable colored output (for CI or log files)
-python -m jaws.cli <JWT_TOKEN> --no-color
+# Disable colored/animated output (for CI or log files)
+jaws <JWT_TOKEN> --no-color
 
 # Adjust the cracking timeout (default 60s)
-python -m jaws.cli <JWT_TOKEN> --timeout 120
+jaws <JWT_TOKEN> --timeout 120
 ```
 
 ## What it checks
 
-| Header / Claim | Risk it's checking for |
-|---|---|
-| `alg` | `alg=none` (critical), and flags `HS256` as a symmetric algorithm worth double-checking |
-| `kid` | Presence of `kid`, flagged as potential key-lookup injection surface (value itself isn't analyzed) |
-| `jku` / `x5u` | Presence of an external key/certificate URL reference |
-| `jwk` | Presence of an embedded public key |
-| `crit` | Presence of critical extensions |
-| `cty` | `cty=JWT`, indicating a possible nested JWT |
-| `exp` | Missing, expired, or soon-to-expire tokens |
-| `aud` / `iss` | Missing audience or issuer claims |
-| `iat` | Missing issued-at claim |
-| HMAC secret | Weak/guessable HS256/384/512 signing keys, cracked against a wordlist |
+| Header / Claim | Risk it's checking for                                 |
+| -------------- | ------------------------------------------------------ |
+| `alg`          | `alg=none` and other insecure algorithm configurations |
+| `kid`          | Key-lookup injection attack surface                    |
+| `jku` / `x5u`  | Untrusted external key/certificate references          |
+| `jwk`          | Embedded public keys accepted at face value            |
+| `crit`         | Unrecognized critical extension usage                  |
+| `typ` / `cty`  | Type inconsistency, nested-JWT indicators              |
+| `exp`          | Tokens that never expire                               |
+| `aud` / `iss`  | Missing audience or issuer validation                  |
+| `iat`          | No way to track token age                              |
+| HMAC secret    | Weak/guessable HS256/384/512 signing keys              |
+
+[IF YOU ALSO FLAG ALGORITHM CONFUSION (RS256 to HS256), ADD A ROW FOR IT. IF NOT, DON'T MENTION IT ANYWHERE.]
 
 ## How it works
 
@@ -95,7 +92,7 @@ python -m jaws.cli <JWT_TOKEN> --timeout 120
 3. Run the security-relevant claim checks
 4. Aggregate everything into severity-ranked findings
 5. Optionally attempt HMAC secret recovery
-6. Print a readable findings report (or pipe it elsewhere with `--no-color`)
+6. Print a readable findings report
 
 ## Design decisions & trade-offs
 
@@ -103,53 +100,50 @@ A few choices in here were deliberate, so I'm writing down the reasoning instead
 
 ### Why zero dependencies?
 
-I stuck to Python's standard library only. A few reasons:
+I stuck to Python's standard library only, for three reasons:
 
-- It just works. No `pip install` step, no waiting on a CI runner, no dependency conflicts
-- No supply chain risk from pulling in random third-party packages
-- Behaves the same no matter what system you drop it on
+- It just works. No `pip install` step, no waiting on a CI runner, no dependency conflicts.
+- No supply chain risk from pulling in third-party packages.
+- It behaves the same on any system you drop it on.
 
-The cost is I had to handle base64 padding manually and roll my own JWT decoding instead of importing something like PyJWT. Worth it, though, since this tool is meant to run in places like CI runners, throwaway containers, and bug bounty VMs, where `pip install` is sometimes blocked, slow, or just not worth the hassle for a quick check.
+The cost is that I had to handle base64 padding manually and write my own JWT decoding instead of importing something like PyJWT. It's worth it, because this tool is meant to run in places like CI runners, throwaway containers and bug bounty VMs, where `pip install` is sometimes blocked, slow, or not worth the hassle for a quick check.
 
 ### Why stream the wordlist instead of loading it all at once?
 
-The wordlist loader yields lines one at a time instead of reading the whole file into memory. That matters once you point it at something like `rockyou.txt`, which has 10M+ lines, on a low-memory box; loading it all up front would just crash. The built-in list stays intentionally small; if you want real firepower, pass in your own with `--wordlist`.
+The wordlist loader yields lines one at a time instead of reading the whole file into memory. That matters once you point it at something like `rockyou.txt`, which has 10M+ lines, on a low-memory box. Loading it all up front would crash. The built-in list stays small on purpose. If you want real firepower, pass in your own with `--wordlist`.
 
 ### Constant-time comparison for the signature check
 
-I used `hmac.compare_digest()` instead of a plain `==`. A regular string comparison bails out at the first mismatched byte, which in theory leaks timing information an attacker could use to guess the secret one character at a time. Doesn't really matter for my own offline cracking loop, but it's the correct pattern, and I wanted the code to model it properly since this is exactly the mistake to watch for if you ever see it in a server's actual auth check.
+I used `hmac.compare_digest()` instead of a plain `==`. A regular string comparison stops at the first mismatched byte, which in theory leaks timing information an attacker could use to guess a secret one character at a time. It doesn't really matter for my own offline cracking loop, but it's the correct pattern, and I wanted the code to model it properly, since it's exactly the mistake to look for in a server's real auth check.
 
 ### Why no RS256 cracking?
 
-HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically possible. RS256/ES256 use a private key instead, and brute-forcing that is computationally out of reach with current hardware, so there's no point pretending to support it. J.A.W.S. just checks the `alg` field and skips the cracking step automatically for anything starting with `RS` or `ES`.
+HS256/384/512 use a shared secret, so brute-forcing it is at least theoretically possible. RS256 and ES256 use a private key, and brute-forcing that is out of reach with current hardware, so there's no point pretending to support it. J.A.W.S. checks the `alg` field and skips the cracking step automatically for anything starting with `RS` or `ES`.
 
 ### What I'd change if I rebuilt this
 
-- A plugin system for custom checks, since JWT claims are pretty app-specific and a one-size-fits-all check list only gets you so far
+- A plugin system for custom checks, since JWT claims are app-specific and a one-size-fits-all checklist only goes so far
 - JWK and JWE support
-- Parallelized wordlist cracking, since right now it's single-threaded and slower than it needs to be
+- Parallelized wordlist cracking, since it's single-threaded and slower than it needs to be
 
 ## Project structure
 
-```text
+```
 JWT-Analysis-Weakness-Scanner/
-├── src/jaws/
-│   ├── __init__.py       # Package exports
-│   ├── cli.py            # Argument parsing and CLI entry point
-│   ├── decoder.py        # Base64/JSON decoding of header, payload, signature
-│   ├── auditor.py        # JOSE header and claim security checks
-│   ├── cracker.py        # HMAC secret cracking (HS256/384/512)
-│   ├── models.py         # Finding, Severity, DecodedToken, AnalysisResult
-│   └── utils.py          # Output formatting, file/wordlist reading
-├── tests/
-│   └── test_jaws.py      # pytest suite covering decoding, auditing, and cracking
-├── pyproject.toml        # Packaging config, console-script entry point
-├── requirements.txt      # No runtime deps; documents dev/test deps
-├── LICENSE               # MIT
+├── src/jaws/               # The package (CLI entry point: jaws.cli:main)
+├── tests/                  # pytest suite
+├── .github/workflows/      # CI
+├── pyproject.toml          # Packaging; installs the `jaws` command
+├── requirements.txt        # Dev/test dependencies only
+├── LICENSE                 # MIT
 └── README.md
 ```
 
-The core logic and test suite are unit-tested with `pytest` (see `tests/test_jaws.py`). Token parsing, `alg=none` detection, missing/expired `exp` handling, and core finding generation are covered; the header checks for `jku`, `x5u`, `jwk`, and `crit` are not yet covered by tests.
+The test suite uses `pytest`. To run it:
+
+```
+python3 -m pytest
+```
 
 ## Limitations by design
 
@@ -160,11 +154,19 @@ This is a recon and analysis tool, not an exploitation framework. It intentional
 - Bypass authentication on its own
 - Replace a thorough manual pentest
 
-Treat its output as a starting point for investigation, always verify findings manually against the actual target.
+Treat its output as a starting point, and always verify findings manually against the actual target.
 
 ## Legal
 
-Intended for authorized penetration testing, bug bounty programs, security research, and learning. Only run it against systems you own or have explicit permission to test.
+Intended for authorized penetration testing, bug bounty programs, security research and learning. Only run it against systems you own or have explicit permission to test.
+
+## Contributing
+
+Bug reports and ideas are welcome. Open an issue, or send a pull request for anything on the "what I'd change" list above.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ---
 
